@@ -1,85 +1,45 @@
+import pcapy
 import socket
-import smtplib
-import threading
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from datetime import datetime
+import struct
 
-# Global variables for email configuration
-SENDER_EMAIL = "your-email@example.com"
-RECEIVER_EMAIL = "recipient-email@example.com"
-EMAIL_PASSWORD = "your-email-password"
-SMTP_SERVER = 'smtp.example.com'
-SMTP_PORT = 587
+class NetworkMonitor:
+    def __init__(self, interface, callback):
+        self.interface = interface
+        self.callback = callback
 
-# Function to initialize email configuration
-def initialize_email():
-    global SENDER_EMAIL, RECEIVER_EMAIL, EMAIL_PASSWORD, SMTP_SERVER, SMTP_PORT
-    # Code to load email configuration from a secure file or environment variables
+    def start_capture(self):
+        try:
+            # Open network interface for capturing packets
+            cap = pcapy.open_live(self.interface, 65536, True, 100)
 
-# Function to send email alert
-def send_email_alert(subject, message):
-    try:
-        initialize_email()
-        msg = MIMEMultipart()
-        msg['From'] = SENDER_EMAIL
-        msg['To'] = RECEIVER_EMAIL
-        msg['Subject'] = subject
-        msg.attach(MIMEText(message, 'plain'))
+            # Set callback function to process each captured packet
+            cap.loop(-1, self.process_packet)
+        except pcapy.PcapError as e:
+            print(f"Error opening interface {self.interface}: {e}")
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as smtp:
-            smtp.starttls()
-            smtp.login(SENDER_EMAIL, EMAIL_PASSWORD)
-            smtp.send_message(msg)
-    except Exception as e:
-        print(f"Error sending email alert: {e}")
+    def process_packet(self, header, data):
+        try:
+            # Parse Ethernet frame
+            eth_header = data[:14]
+            eth_header_unpack = struct.unpack('!6s6sH', eth_header)
+            eth_protocol = socket.ntohs(eth_header_unpack[2])
 
-# Function to detect network-based attacks
-def detect_network_attack(packet):
-    try:
-        # Implement complex network attack detection logic here
-        return False
-    except Exception as e:
-        print(f"Error detecting network attack: {e}")
-        return False
+            # Parse IP header
+            if eth_protocol == 8:  # IPv4
+                ip_header = data[14:34]
+                ip_header_unpack = struct.unpack('!BBHHHBBH4s4s', ip_header)
+                src_ip = socket.inet_ntoa(ip_header_unpack[8])
+                dest_ip = socket.inet_ntoa(ip_header_unpack[9])
 
-# Function to detect behavior-based anomalies
-def detect_behavior_anomaly(data):
-    try:
-        # Implement complex behavior-based anomaly detection logic here
-        return False
-    except Exception as e:
-        print(f"Error detecting behavior anomaly: {e}")
-        return False
+                # Call callback function with packet information
+                self.callback(src_ip, dest_ip)
+        except Exception as e:
+            print(f"Error processing packet: {e}")
 
-# Function to monitor network traffic
-def monitor_network_traffic():
-    try:
-        with socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3)) as s:
-            while True:
-                packet = s.recvfrom(65565)[0]
-                if detect_network_attack(packet):
-                    subject = "Network-based Attack Detected!"
-                    message = f"A potential network-based attack has been detected at {datetime.now()}."
-                    send_email_alert(subject, message)
-                data = packet.get_data()
-                if detect_behavior_anomaly(data):
-                    subject = "Behavior-based Anomaly Detected!"
-                    message = f"A behavior-based anomaly has been detected at {datetime.now()}."
-                    send_email_alert(subject, message)
-    except Exception as e:
-        print(f"Error monitoring network traffic: {e}")
+# Example usage
+def packet_callback(src_ip, dest_ip):
+    print(f"Received packet from {src_ip} to {dest_ip}")
 
-# Main function to start the IDS
-def start_ids():
-    try:
-        # Create a separate thread for monitoring network traffic
-        ids_thread = threading.Thread(target=monitor_network_traffic)
-        ids_thread.daemon = True
-        ids_thread.start()
-    except Exception as e:
-        print(f"Error starting IDS: {e}")
-
-# Entry point of the program
-if __name__ == "__main__":
-    start_ids()
+# Start network monitoring on the specified interface
+monitor = NetworkMonitor("eth0", packet_callback)
+monitor.start_capture()
