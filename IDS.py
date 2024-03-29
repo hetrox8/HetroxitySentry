@@ -1,45 +1,75 @@
-import pcapy
-import socket
-import struct
+import psutil
+import time
+import logging
 
-class NetworkMonitor:
-    def __init__(self, interface, callback):
-        self.interface = interface
-        self.callback = callback
+class BehaviorMonitor:
+    def __init__(self, interval=5):
+        self.interval = interval
+        self.logger = self.setup_logger()
 
-    def start_capture(self):
-        try:
-            # Open network interface for capturing packets
-            cap = pcapy.open_live(self.interface, 65536, True, 100)
+    def setup_logger(self):
+        logger = logging.getLogger("behavior_monitor")
+        logger.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler = logging.FileHandler("behavior_monitor.log")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        return logger
 
-            # Set callback function to process each captured packet
-            cap.loop(-1, self.process_packet)
-        except pcapy.PcapError as e:
-            print(f"Error opening interface {self.interface}: {e}")
+    def monitor_behavior(self):
+        while True:
+            # Capture system activity
+            processes = self.capture_processes()
+            network_connections = self.capture_network()
+            file_system_changes = self.capture_file_system()
 
-    def process_packet(self, header, data):
-        try:
-            # Parse Ethernet frame
-            eth_header = data[:14]
-            eth_header_unpack = struct.unpack('!6s6sH', eth_header)
-            eth_protocol = socket.ntohs(eth_header_unpack[2])
+            # Analyze behavior
+            suspicious_processes = self.analyze_processes(processes)
+            suspicious_connections = self.analyze_network(network_connections)
+            suspicious_files = self.analyze_file_system(file_system_changes)
 
-            # Parse IP header
-            if eth_protocol == 8:  # IPv4
-                ip_header = data[14:34]
-                ip_header_unpack = struct.unpack('!BBHHHBBH4s4s', ip_header)
-                src_ip = socket.inet_ntoa(ip_header_unpack[8])
-                dest_ip = socket.inet_ntoa(ip_header_unpack[9])
+            # Check for suspicious behavior
+            if suspicious_processes or suspicious_connections or suspicious_files:
+                # Alerting mechanism (log for now)
+                self.logger.warning("Suspicious behavior detected:")
+                if suspicious_processes:
+                    self.logger.warning("  - Suspicious processes: %s", suspicious_processes)
+                if suspicious_connections:
+                    self.logger.warning("  - Suspicious network connections: %s", suspicious_connections)
+                if suspicious_files:
+                    self.logger.warning("  - Suspicious file system changes: %s", suspicious_files)
 
-                # Call callback function with packet information
-                self.callback(src_ip, dest_ip)
-        except Exception as e:
-            print(f"Error processing packet: {e}")
+            # Sleep for the specified interval
+            time.sleep(self.interval)
+
+    def capture_processes(self):
+        # Capture process information
+        processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'exe', 'cmdline', 'ppid', 'username', 'cpu_percent', 'memory_percent']):
+            processes.append(proc.info)
+        return processes
+
+    def capture_network(self):
+        # Capture network connection information
+        return psutil.net_connections()
+
+    def capture_file_system(self):
+        # Capture file system changes (not implemented in this basic version)
+        return []
+
+    def analyze_processes(self, processes):
+        # Analyze process behavior (not implemented in this basic version)
+        return []
+
+    def analyze_network(self, network_connections):
+        # Analyze network traffic behavior (not implemented in this basic version)
+        return []
+
+    def analyze_file_system(self, file_system_changes):
+        # Analyze file system changes (not implemented in this basic version)
+        return []
 
 # Example usage
-def packet_callback(src_ip, dest_ip):
-    print(f"Received packet from {src_ip} to {dest_ip}")
-
-# Start network monitoring on the specified interface
-monitor = NetworkMonitor("eth0", packet_callback)
-monitor.start_capture()
+if __name__ == "__main__":
+    behavior_monitor = BehaviorMonitor()
+    behavior_monitor.monitor_behavior()
